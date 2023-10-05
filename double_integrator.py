@@ -49,10 +49,12 @@ class ObstacleAvoidanceProblem:
                 np.eye(2), np.zeros(2), q[:,0])
        
         # Cost function
+        accel_weight = 1e-4
+        velocity_weight = 1e-4
         for t in range(num_steps - 1):
-            self.mp.AddQuadraticCost(0.01 * a[:,t].dot(a[:,t]))
+            self.mp.AddQuadraticCost(accel_weight * a[:,t].dot(a[:,t]))
         for t in range(num_steps):
-            self.mp.AddQuadraticCost(0.01 * v[:,t].dot(v[:,t]))
+            self.mp.AddQuadraticCost(velocity_weight * v[:,t].dot(v[:,t]))
 
         # Obstacle avoidance constraint
         for t in range(num_steps):
@@ -89,8 +91,9 @@ class ObstacleAvoidanceProblem:
         assert res.is_success()
 
         print(f"Solved with {res.get_solver_id().name()}")
+        print(f"Cost: {res.get_optimal_cost()}")
 
-        return res.GetSolution(self.q)
+        return res.GetSolution(self.q), res.get_optimal_cost()
         
 
     def plot_scenario(self):
@@ -120,8 +123,8 @@ class ObstacleAvoidanceProblem:
 if __name__=="__main__":
     prob = ObstacleAvoidanceProblem()
     
-    guess = np.array([[-0.1*t, -2 + 0.2*t] for t in range(20)]).T
-    traj = prob.Solve([0, -2], guess)
+    guess = np.array([[0.1*t, -2 + 0.2*t] for t in range(20)]).T
+    traj, cost = prob.Solve([-2, 0], guess)
 
     prob.plot_scenario()
     prob.plot_trajectory(guess, color="b", marker="o", alpha=0.2)
