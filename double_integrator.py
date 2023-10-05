@@ -12,7 +12,7 @@ from pydrake.all import *
 import matplotlib.pyplot as plt
 
 class ObstacleAvoidanceProblem:
-    def __init__(self, obstacle_position=[0, 0], obstacle_radius=1,
+    def __init__(self, obstacle_position=[0, 0], obstacle_radius=1.0,
             target_position=[0, 2], num_steps=20, time_step=1e-2):
         """
         A simple obstacle avoidance problem for a robot with double integrator
@@ -67,6 +67,9 @@ class ObstacleAvoidanceProblem:
         final_err = q[:,num_steps-1] - np.asarray(target_position)
         self.mp.AddConstraint(eq(final_err, 0))
 
+        # Hard constraint on final velocity
+        self.mp.AddConstraint(eq(v[:,num_steps-1], 0))
+
         self.q = q  # allows us to extract the solution later
 
     def Solve(self, q0, initial_guess):
@@ -88,9 +91,10 @@ class ObstacleAvoidanceProblem:
 
         solver = SnoptSolver()
         res = solver.Solve(self.mp)
-        assert res.is_success()
-
         print(f"Solved with {res.get_solver_id().name()}")
+        if not res.is_success():
+            print(f"Solver failed! Getting the solution anyway")
+
         print(f"Cost: {res.get_optimal_cost()}")
 
         return res.GetSolution(self.q), res.get_optimal_cost()
@@ -105,7 +109,7 @@ class ObstacleAvoidanceProblem:
         ax.set_xlim((-5, 5))
         ax.set_ylim((-5, 5))
 
-        plt.plot(*self.target_position, "g*")
+        plt.plot(*self.target_position, "g*", markersize=20)
         obstacle = plt.Circle(self.obstacle_position, self.obstacle_radius, color="red")
         ax.add_patch(obstacle)
 
@@ -121,13 +125,19 @@ class ObstacleAvoidanceProblem:
 
 
 if __name__=="__main__":
+    # Set up the scenario
     prob = ObstacleAvoidanceProblem()
-    
-    guess = np.array([[0.1*t, -2 + 0.2*t] for t in range(20)]).T
-    traj, cost = prob.Solve([-2, 0], guess)
+ 
+    # Solve from a particular initial guess
+    q0 = np.array([0.5, -2])
+    guess = np.array([q0 + [-0.2*t, 0.2*t] for t in range(20)]).T
+    traj, cost = prob.Solve(q0, guess)
 
+    # Plot the solution
     prob.plot_scenario()
-    prob.plot_trajectory(guess, color="b", marker="o", alpha=0.2)
-    prob.plot_trajectory(traj, color="b", marker="o")
+    prob.plot_trajectory(guess, color="b", marker="o", alpha=0.2, label="guess")
+    prob.plot_trajectory(traj, color="b", marker="o", label="solution")
+    plt.legend()
 
     plt.show()
+
