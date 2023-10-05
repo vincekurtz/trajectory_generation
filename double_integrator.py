@@ -45,14 +45,25 @@ class ObstacleAvoidanceProblem:
             a[:,t] = (v[:,t+1] - v[:,t]) / time_step
 
         # Initial condition constraint: we'll replace this later
-        self.initial_condition = self.mp.AddConstraint(eq(q[:,0], np.zeros(2)))
+        self.initial_condition = self.mp.AddLinearEqualityConstraint(
+                np.eye(2), np.zeros(2), q[:,0])
        
         # Cost function
         for t in range(num_steps - 1):
             self.mp.AddQuadraticCost(0.01 * a[:,t].dot(a[:,t]))
+        for t in range(num_steps):
+            self.mp.AddQuadraticCost(0.01 * v[:,t].dot(v[:,t]))
 
+        # Obstacle avoidance constraint
+        for t in range(num_steps):
+            squared_distance_to_obstacle = (q[:,t] -
+                    obstacle_position).dot(q[:,t] - obstacle_position)
+            self.mp.AddConstraint(
+                    squared_distance_to_obstacle >= obstacle_radius**2)
+
+        # Hard constraint on final position
         final_err = q[:,num_steps-1] - np.asarray(target_position)
-        self.mp.AddQuadraticCost(1000 * final_err.dot(final_err))
+        self.mp.AddConstraint(eq(final_err, 0))
 
         self.q = q  # allows us to extract the solution later
 
@@ -65,7 +76,16 @@ class ObstacleAvoidanceProblem:
             q0: initial position of the robot, size 2
             initial_guess: guess for the position trajectory, size 2xnum_steps
         """
-        res = Solve(self.mp)
+        assert len(q0) == 2
+        assert initial_guess.shape == (2, self.num_steps)
+
+        self.initial_condition.evaluator().UpdateCoefficients(
+                Aeq=np.eye(2), beq=q0)
+
+        self.mp.SetInitialGuess(self.q, initial_guess)
+
+        solver = SnoptSolver()
+        res = solver.Solve(self.mp)
         assert res.is_success()
 
         print(f"Solved with {res.get_solver_id().name()}")
@@ -100,8 +120,8 @@ class ObstacleAvoidanceProblem:
 if __name__=="__main__":
     prob = ObstacleAvoidanceProblem()
     
-    guess = np.array([[0.1*t, -2 + 0.2*t] for t in range(20)]).T
-    traj = prob.Solve(np.array([-2, 0]), guess)
+    guess = np.array([[-0.1*t, -2 + 0.2*t] for t in range(20)]).T
+    traj = prob.Solve([0, -2], guess)
 
     prob.plot_scenario()
     prob.plot_trajectory(guess, color="b", marker="o", alpha=0.2)
