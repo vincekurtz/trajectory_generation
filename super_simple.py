@@ -140,7 +140,7 @@ def approximate_score_function(
 
     return jnp.sum(weights[:, None, None] * deltas, axis=0)
 
-def do_mppi():
+def solve_with_mppi():
     """Solve the trajectory optimization using MPPI-style sampling."""
     rng = jax.random.PRNGKey(0)
     sigma = 0.01
@@ -218,11 +218,8 @@ def do_langevin_sampling(
     
     return samples
 
-
-if __name__=="__main__":
-    # solve_with_gradient_descent()
-    # do_mppi()
-
+def solve_with_diffusion():
+    """Use Langevin sampling dynamics to find a bunch of trajectories."""
     horizon = 20
     num_samples = 10
 
@@ -231,26 +228,45 @@ if __name__=="__main__":
     sigma = 1.0
     lmbda = 0.1
 
+    learning_rate = 0.1
+    outer_iterations = 51
+    rescale_rate = 0.9
+
     # Sample some control tapes from a Gaussian distribution
     rng = jax.random.PRNGKey(1)
     rng, init_samples_rng = jax.random.split(rng)
-    U = 1.0*jax.random.normal(init_samples_rng, (num_samples, horizon, 2))
+    U = jax.random.normal(init_samples_rng, (num_samples, horizon, 2))
+
+    # Set up a figure to show intermediate solutions
+    plt.figure()
+    plot_iterations = [0, 10, 20, 30, 40, 50]
 
     # Use Langevin sampling to refine the samples 
     jit_cost = jax.jit(jax.vmap(cost))
-    for i in range(600):
-        print("Sampling with sigma =", sigma)
-        learning_rate = 0.1
+    for i in range(outer_iterations):
         rng, langevin_rng = jax.random.split(rng)
         U = do_langevin_sampling(
             U, learning_rate, num_langevin_iterations, num_mppi_samples, sigma, lmbda, langevin_rng)
         J = jit_cost(U)
 
-        print(f"  Cost: {jnp.mean(J)}, std: {jnp.std(J)}")
+        if i in plot_iterations:
+            ax_idx = plot_iterations.index(i)
+            plt.subplot(2, 3, ax_idx+1)
+            plot_scenario()
+            for j in range(num_samples):
+                plot_trajectory(U[j], alpha=0.2)
+            plt.title(f"Iteration {i}")
 
-        sigma *= 0.99
+        if i % 5 == 0:
+            print(f"  Iteration: {i}, cost: {jnp.mean(J):.4f}, std: {jnp.std(J):.4f}, sigma: {sigma:.4f}")
 
-    plot_scenario()
-    for i in range(num_samples):
-        plot_trajectory(U[i], alpha=0.2)
+        sigma *= rescale_rate
+
     plt.show()
+
+
+if __name__=="__main__":
+    solve_with_diffusion()
+    # solve_with_gradient_descent()
+    # solve_with_mppi()
+
