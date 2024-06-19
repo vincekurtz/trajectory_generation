@@ -195,7 +195,8 @@ def do_langevin_sampling(
         lmbda: the temperature of the energy distribution p(U).
         rng: the random number generator key.
     """
-    for _ in range(num_iterations):
+
+    def _langevin_step(samples, rng):
         # Compute the score functions
         rng, score_rng = jax.random.split(rng)
         scores = jax.vmap(approximate_score_function, in_axes=(0, None, None, None, None))(
@@ -207,6 +208,13 @@ def do_langevin_sampling(
 
         # Update the samples using Langevin dynamics
         samples = samples + learning_rate * scores + jnp.sqrt(2 * learning_rate * sigma**2) * z
+
+        return samples, rng
+
+    jit_step = jax.jit(_langevin_step)
+
+    for _ in range(num_iterations):
+        samples, rng = jit_step(samples, rng)
     
     return samples
 
