@@ -165,12 +165,13 @@ def do_mppi():
 
 
 def do_langevin_sampling(
-        initial_samples: jnp.ndarray,
+        samples: jnp.ndarray,
         learning_rate: float,
         num_iterations: int,
         num_mppi_samples: int,
         sigma: float,
         lmbda: float,
+        rng: jax.random.PRNGKey,
 ):
     """Sample from the distribution p_σ(U) using Langevin dynamics.
 
@@ -186,18 +187,53 @@ def do_langevin_sampling(
     sampling.
 
     Args: 
-        initial_samples: the initial samples U_j that we will transform.
+        samples: the initial samples U_j that we will transform.
         learning_rate: the step size for Langevin dynamics.
         num_iterations: the number of Langevin dynamics steps to take.
         num_mppi_samples: the number of samples for estimating the score.
         sigma: the noise level for the samples.
         lmbda: the temperature of the energy distribution p(U).
+        rng: the random number generator key.
     """
-    pass
+    for _ in range(num_iterations):
+        # Compute the score functions
+        rng, score_rng = jax.random.split(rng)
+        scores = jax.vmap(approximate_score_function, in_axes=(0, None, None, None, None))(
+            samples, sigma, lmbda, num_mppi_samples, score_rng)
+        
+        # Sample some random noise
+        rng, noise_rng = jax.random.split(rng)
+        z = jax.random.normal(noise_rng, samples.shape)
 
-
+        # Update the samples using Langevin dynamics
+        samples = samples + learning_rate * scores + jnp.sqrt(2 * learning_rate) * z
+    
+    return samples
 
 
 if __name__=="__main__":
     # solve_with_gradient_descent()
-    do_mppi()
+    # do_mppi()
+
+    horizon = 20
+    num_samples = 10
+
+    learning_rate = 1e-5
+    num_langevin_iterations = 100
+    num_mppi_samples = 64
+    sigma = 0.01
+    lmbda = 0.1
+
+    # Sample some control tapes from a Gaussian distribution
+    rng = jax.random.PRNGKey(0)
+    rng, init_samples_rng = jax.random.split(rng)
+    U = 0.1*jax.random.normal(init_samples_rng, (num_samples, horizon, 2))
+
+    # Use Langevin sampling to refine the samples
+    U = do_langevin_sampling(
+        U, learning_rate, num_langevin_iterations, num_mppi_samples, sigma, lmbda, rng)
+
+    plot_scenario()
+    for i in range(num_samples):
+        plot_trajectory(U[i], alpha=0.2)
+    plt.show()
