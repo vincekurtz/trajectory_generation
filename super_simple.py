@@ -138,7 +138,7 @@ def approximate_score_function(
     weights = jnp.exp(-1/lmbda * (costs - min_cost))
     weights = weights / jnp.sum(weights)
 
-    return jnp.sum(weights[:, None, None] * deltas, axis=0) / sigma**2
+    return jnp.sum(weights[:, None, None] * deltas, axis=0)
 
 def do_mppi():
     """Solve the trajectory optimization using MPPI-style sampling."""
@@ -154,7 +154,7 @@ def do_mppi():
     for i in range(N):
         rng, score_rng = jax.random.split(rng)
         s = approximate_score_function(U, sigma, lmbda, num_samples, score_rng)
-        U = U + 0.1 * sigma**2 * s
+        U = U + 0.1 * s
 
         if i % 10 == 0:
             plot_trajectory(U, alpha=i/N)
@@ -206,7 +206,7 @@ def do_langevin_sampling(
         z = jax.random.normal(noise_rng, samples.shape)
 
         # Update the samples using Langevin dynamics
-        samples = samples + learning_rate * scores + jnp.sqrt(2 * learning_rate) * z
+        samples = samples + learning_rate * scores + jnp.sqrt(2 * learning_rate * sigma**2) * z
     
     return samples
 
@@ -218,20 +218,24 @@ if __name__=="__main__":
     horizon = 20
     num_samples = 10
 
-    learning_rate = 1e-5
     num_langevin_iterations = 100
     num_mppi_samples = 64
-    sigma = 0.01
-    lmbda = 0.1
+    sigma = 0.1
+    lmbda = 1.0
 
     # Sample some control tapes from a Gaussian distribution
     rng = jax.random.PRNGKey(0)
     rng, init_samples_rng = jax.random.split(rng)
     U = 0.1*jax.random.normal(init_samples_rng, (num_samples, horizon, 2))
 
-    # Use Langevin sampling to refine the samples
-    U = do_langevin_sampling(
-        U, learning_rate, num_langevin_iterations, num_mppi_samples, sigma, lmbda, rng)
+    # Use Langevin sampling to refine the samples 
+    for i in range(4):
+        print("Sampling with sigma =", sigma)
+        learning_rate = 0.01
+        rng, langevin_rng = jax.random.split(rng)
+        U = do_langevin_sampling(
+            U, learning_rate, num_langevin_iterations, num_mppi_samples, sigma, lmbda, langevin_rng)
+        sigma *= 0.1
 
     plot_scenario()
     for i in range(num_samples):
