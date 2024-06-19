@@ -46,7 +46,7 @@ def cost(U: jnp.ndarray):
         x, J = carry
         u = U[i]
         J += 0.01 * u.dot(u)
-        J += 0.01 * obstacle_avoidance_cost(x)
+        J += 1.0 * obstacle_avoidance_cost(x)
         x = x + U[i]
         return (x, J), None
 
@@ -141,10 +141,11 @@ def approximate_score_function(
     return jnp.sum(weights[:, None, None] * deltas, axis=0) / sigma**2
 
 def do_mppi():
+    """Solve the trajectory optimization using MPPI-style sampling."""
     rng = jax.random.PRNGKey(0)
     sigma = 0.01
-    lmbda = 0.1
-    num_samples = 100
+    lmbda = 0.5
+    num_samples = 64
 
     plot_scenario()
     U = jnp.zeros((20, 2))
@@ -157,6 +158,7 @@ def do_mppi():
 
         if i % 10 == 0:
             plot_trajectory(U, alpha=i/N)
+    plot_trajectory(U, color="black")
 
     plt.show()
 
@@ -197,5 +199,5 @@ def do_langevin_sampling(
 
 
 if __name__=="__main__":
-    #solve_with_gradient_descent()
+    # solve_with_gradient_descent()
     do_mppi()
