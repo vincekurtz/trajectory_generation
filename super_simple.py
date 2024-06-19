@@ -232,13 +232,13 @@ if __name__=="__main__":
     lmbda = 0.1
 
     # Sample some control tapes from a Gaussian distribution
-    rng = jax.random.PRNGKey(0)
+    rng = jax.random.PRNGKey(1)
     rng, init_samples_rng = jax.random.split(rng)
     U = 1.0*jax.random.normal(init_samples_rng, (num_samples, horizon, 2))
 
     # Use Langevin sampling to refine the samples 
     jit_cost = jax.jit(jax.vmap(cost))
-    for i in range(100):
+    for i in range(600):
         print("Sampling with sigma =", sigma)
         learning_rate = 0.1
         rng, langevin_rng = jax.random.split(rng)
@@ -248,7 +248,7 @@ if __name__=="__main__":
 
         print(f"  Cost: {jnp.mean(J)}, std: {jnp.std(J)}")
 
-        sigma *= 0.95
+        sigma *= 0.99
 
     plot_scenario()
     for i in range(num_samples):
