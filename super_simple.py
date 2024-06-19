@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 # Scenario definition variables
 OBSTACLE_POSITION = jnp.array([0.0, 0.0])
-START_STATE = jnp.array([-0.1, -1.5])
+START_STATE = jnp.array([0.1, -1.5])
 GOAL_STATE = jnp.array([0.0, 1.5])
 
 def obstacle_avoidance_cost(x: jnp.ndarray):
@@ -80,16 +80,16 @@ def gradient_descent(U: jnp.ndarray, learning_rate: float, num_steps: int):
 def plot_scenario():
     """Make a pretty plot of the task."""
     # Make a contour plot of the obstacle avoidance cost
-    x = jnp.linspace(-2, 2, 100)
-    y = jnp.linspace(-2, 2, 100)
+    x = jnp.linspace(-3, 3, 100)
+    y = jnp.linspace(-3, 3, 100)
     X, Y = jnp.meshgrid(x, y)
     Z = jax.vmap(jax.vmap(obstacle_avoidance_cost))(jnp.stack([X, Y], axis=-1))
     plt.contourf(X, Y, Z, cmap="Reds", levels=100)
     plt.colorbar()
     plt.xlabel("px")
     plt.ylabel("py")
-    plt.xlim(-2, 2)
-    plt.ylim(-2, 2)
+    plt.xlim(-3, 3)
+    plt.ylim(-3, 3)
 
     # Plot a green star at the goal position
     plt.plot(*GOAL_STATE, "g*", markersize=20)
@@ -227,7 +227,7 @@ if __name__=="__main__":
     num_samples = 10
 
     num_langevin_iterations = 100
-    num_mppi_samples = 128
+    num_mppi_samples = 1024
     sigma = 1.0
     lmbda = 0.1
 
