@@ -10,6 +10,10 @@
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
+
+import numpy as np
+import pickle
 
 # Scenario definition variables
 OBSTACLE_POSITION = jnp.array([0.0, 0.0])
@@ -85,7 +89,7 @@ def plot_scenario():
     X, Y = jnp.meshgrid(x, y)
     Z = jax.vmap(jax.vmap(obstacle_avoidance_cost))(jnp.stack([X, Y], axis=-1))
     plt.contourf(X, Y, Z, cmap="Reds", levels=100)
-    plt.colorbar()
+    #plt.colorbar()
     plt.xlabel("px")
     plt.ylabel("py")
     plt.xlim(-3, 3)
@@ -98,7 +102,32 @@ def plot_trajectory(U, color="blue", alpha=1.0):
     """Plot the trajectory given by the sequence of actions U."""
     X = jnp.cumsum(U, axis=0) + START_STATE
     X = jnp.concatenate([START_STATE.reshape(1, 2), X], axis=0)
-    plt.plot(X[:,0], X[:,1], "o-", color=color, alpha=alpha)
+    return plt.plot(X[:,0], X[:,1], "o-", color=color, alpha=alpha)
+
+def animate_diffusion_process(samples):
+    """Make an animation of the diffusion process."""
+    fig, ax = plt.subplots()
+    plot_scenario()
+    traj = plot_trajectory(samples[0][0], alpha=1.0)
+
+    num_iterations = len(samples)
+    num_samples = len(samples[0])
+
+    def update(idx):
+        i, j = divmod(idx, num_samples)
+        i = i % num_samples
+        X = jnp.cumsum(samples[j][i], axis=0) + START_STATE
+        X = jnp.concatenate([START_STATE.reshape(1, 2), X], axis=0)
+        traj[0].set_data(X[:,0], X[:,1])
+        plt.title(f"Seed {i}, Iteration {j}")
+
+    ani = animation.FuncAnimation(
+        fig, update, frames=num_samples*num_iterations, interval=100)
+    
+    # Save the animation to a file
+    ani.save("diffusion.mp4", writer="ffmpeg", fps=10)
+    plt.show()
+
 
 def solve_with_gradient_descent():
     """Solve the obstacle avoidance problem using gradient descent."""
@@ -224,7 +253,7 @@ def solve_with_diffusion():
     num_samples = 20
 
     num_langevin_iterations = 100
-    num_mppi_samples = 1024
+    num_mppi_samples = 128
     sigma = 0.1
     lmbda = 0.01
 
@@ -242,6 +271,7 @@ def solve_with_diffusion():
     plot_iterations = [0, 3, 5, 10, 30, 50]
 
     # Use Langevin sampling to refine the samples 
+    all_samples = [U]
     jit_cost = jax.jit(jax.vmap(cost))
     for i in range(outer_iterations):
         # Make pretty plots
@@ -264,12 +294,22 @@ def solve_with_diffusion():
             U, learning_rate, num_langevin_iterations, num_mppi_samples, sigma, lmbda, langevin_rng)
 
         sigma *= rescale_rate
+        all_samples.append(np.asarray(U))
 
     plt.show()
 
+    return all_samples
+
 
 if __name__=="__main__":
-    solve_with_diffusion()
+    # samples = solve_with_diffusion()
+    # with open("samples.pkl", "wb") as f:
+    #     pickle.dump(samples, f)
+
+    with open("samples.pkl", "rb") as f:
+        samples = pickle.load(f)
+    animate_diffusion_process(samples)
+
     # solve_with_gradient_descent()
     # solve_with_mppi()
 
