@@ -94,11 +94,11 @@ def plot_scenario():
     # Plot a green star at the goal position
     plt.plot(*GOAL_STATE, "g*", markersize=20)
 
-def plot_trajectory(U):
+def plot_trajectory(U, color="blue", alpha=1.0):
     """Plot the trajectory given by the sequence of actions U."""
     X = jnp.cumsum(U, axis=0) + START_STATE
     X = jnp.concatenate([START_STATE.reshape(1, 2), X], axis=0)
-    plt.plot(X[:,0], X[:,1], "bo")
+    plt.plot(X[:,0], X[:,1], "o-", color=color, alpha=alpha)
 
 def solve_with_gradient_descent():
     """Solve the obstacle avoidance problem using gradient descent."""
@@ -112,5 +112,90 @@ def solve_with_gradient_descent():
     plot_trajectory(U_opt)
     plt.show()
 
+def approximate_score_function(
+        U: jnp.ndarray, 
+        sigma: float, 
+        lmbda: float,
+        num_samples: int, 
+        rng: jax.random.PRNGKey):
+    """Approximate the score function ∇_U log p_σ(U) using MPPI-style sampling.
+
+    Args:
+        U: the sequence of actions U = [u_0, u_1, ..., u_{T-1}]. Each u_t is a
+           2D vector representing the change in position at time t.
+        sigma: the noise level for the samples.
+        lmbda: the temperature of the energy distribution p(U).
+        num_samples: the number of samples to use for the approximation.
+        rng: the random number generator key.
+
+    Returns:
+        the approximate score function ∇_U log p_σ(U)
+    """
+    deltas = jax.random.normal(rng, (num_samples,) + U.shape)
+    U_new = U + sigma * deltas
+    costs = jax.vmap(cost)(U_new)
+    min_cost = jnp.min(costs)
+    weights = jnp.exp(-1/lmbda * (costs - min_cost))
+    weights = weights / jnp.sum(weights)
+
+    return jnp.sum(weights[:, None, None] * deltas, axis=0) / sigma**2
+
+def do_mppi():
+    rng = jax.random.PRNGKey(0)
+    sigma = 0.01
+    lmbda = 0.1
+    num_samples = 100
+
+    plot_scenario()
+    U = jnp.zeros((20, 2))
+
+    N = 100
+    for i in range(N):
+        rng, score_rng = jax.random.split(rng)
+        s = approximate_score_function(U, sigma, lmbda, num_samples, score_rng)
+        U = U + 0.1 * sigma**2 * s
+
+        if i % 10 == 0:
+            plot_trajectory(U, alpha=i/N)
+
+    plt.show()
+
+
+
+def do_langevin_sampling(
+        initial_samples: jnp.ndarray,
+        learning_rate: float,
+        num_iterations: int,
+        num_mppi_samples: int,
+        sigma: float,
+        lmbda: float,
+):
+    """Sample from the distribution p_σ(U) using Langevin dynamics.
+
+    That is, sample 
+        U ~ p_σ(U) = ∫ p(U')N(U; U', σ²I)dU'.
+    
+    These samples can be viewed as noised version of samples from the target
+    distribution p(U) = exp(-J(U)/λ), e.g., 
+        U = U' + sigma * Z,
+    where Z ~ N(0, I) and U' ~ p(U').
+
+    We will approximate the score function ∇_U log p_σ(U) using MPPI-style
+    sampling.
+
+    Args: 
+        initial_samples: the initial samples U_j that we will transform.
+        learning_rate: the step size for Langevin dynamics.
+        num_iterations: the number of Langevin dynamics steps to take.
+        num_mppi_samples: the number of samples for estimating the score.
+        sigma: the noise level for the samples.
+        lmbda: the temperature of the energy distribution p(U).
+    """
+    pass
+
+
+
+
 if __name__=="__main__":
-    solve_with_gradient_descent()
+    #solve_with_gradient_descent()
+    do_mppi()
