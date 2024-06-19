@@ -227,20 +227,20 @@ if __name__=="__main__":
     num_samples = 10
 
     num_langevin_iterations = 100
-    num_mppi_samples = 64
-    sigma = 0.1
+    num_mppi_samples = 128
+    sigma = 1.0
     lmbda = 0.1
 
     # Sample some control tapes from a Gaussian distribution
     rng = jax.random.PRNGKey(0)
     rng, init_samples_rng = jax.random.split(rng)
-    U = 0.1*jax.random.normal(init_samples_rng, (num_samples, horizon, 2))
+    U = 1.0*jax.random.normal(init_samples_rng, (num_samples, horizon, 2))
 
     # Use Langevin sampling to refine the samples 
     jit_cost = jax.jit(jax.vmap(cost))
-    for i in range(4):
+    for i in range(100):
         print("Sampling with sigma =", sigma)
-        learning_rate = 0.01
+        learning_rate = 0.1
         rng, langevin_rng = jax.random.split(rng)
         U = do_langevin_sampling(
             U, learning_rate, num_langevin_iterations, num_mppi_samples, sigma, lmbda, langevin_rng)
@@ -248,7 +248,7 @@ if __name__=="__main__":
 
         print(f"  Cost: {jnp.mean(J)}, std: {jnp.std(J)}")
 
-        sigma *= 0.1
+        sigma *= 0.95
 
     plot_scenario()
     for i in range(num_samples):
