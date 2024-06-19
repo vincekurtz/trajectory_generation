@@ -225,30 +225,25 @@ def solve_with_diffusion():
 
     num_langevin_iterations = 100
     num_mppi_samples = 1024
-    sigma = 1.0
-    lmbda = 0.1
+    sigma = 0.1
+    lmbda = 0.01
 
-    learning_rate = 0.1
-    outer_iterations = 51
+    learning_rate = 0.01
+    outer_iterations = 31
     rescale_rate = 0.9
 
     # Sample some control tapes from a Gaussian distribution
     rng = jax.random.PRNGKey(1)
     rng, init_samples_rng = jax.random.split(rng)
-    U = jax.random.normal(init_samples_rng, (num_samples, horizon, 2))
+    U = 1.0*jax.random.normal(init_samples_rng, (num_samples, horizon, 2))
 
     # Set up a figure to show intermediate solutions
     plt.figure()
-    plot_iterations = [0, 10, 20, 30, 40, 50]
+    plot_iterations = [0, 1, 2, 10, 20, 30]
 
     # Use Langevin sampling to refine the samples 
     jit_cost = jax.jit(jax.vmap(cost))
     for i in range(outer_iterations):
-        rng, langevin_rng = jax.random.split(rng)
-        U = do_langevin_sampling(
-            U, learning_rate, num_langevin_iterations, num_mppi_samples, sigma, lmbda, langevin_rng)
-        J = jit_cost(U)
-
         if i in plot_iterations:
             ax_idx = plot_iterations.index(i)
             plt.subplot(2, 3, ax_idx+1)
@@ -256,6 +251,11 @@ def solve_with_diffusion():
             for j in range(num_samples):
                 plot_trajectory(U[j], alpha=0.2)
             plt.title(f"Iteration {i}")
+        
+        rng, langevin_rng = jax.random.split(rng)
+        U = do_langevin_sampling(
+            U, learning_rate, num_langevin_iterations, num_mppi_samples, sigma, lmbda, langevin_rng)
+        J = jit_cost(U)
 
         if i % 5 == 0:
             print(f"  Iteration: {i}, cost: {jnp.mean(J):.4f}, std: {jnp.std(J):.4f}, sigma: {sigma:.4f}")
