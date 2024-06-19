@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 # Scenario definition variables
 OBSTACLE_POSITION = jnp.array([0.0, 0.0])
-START_STATE = jnp.array([0.1, -1.5])
+START_STATE = jnp.array([1.0, -1.5])
 GOAL_STATE = jnp.array([0.0, 1.5])
 
 def obstacle_avoidance_cost(x: jnp.ndarray):
