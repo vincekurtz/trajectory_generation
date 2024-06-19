@@ -100,18 +100,17 @@ def plot_trajectory(U):
     X = jnp.concatenate([START_STATE.reshape(1, 2), X], axis=0)
     plt.plot(X[:,0], X[:,1], "bo")
 
-if __name__=="__main__":
-    plot_scenario()
-
+def solve_with_gradient_descent():
+    """Solve the obstacle avoidance problem using gradient descent."""
     U_guess = jnp.zeros((20, 2))
     U_opt = gradient_descent(U_guess, 0.01, 5000)
 
     print(f"Initial cost: {cost(U_guess)}")
     print(f"Optimized cost: {cost(U_opt)}")
 
+    plot_scenario()
     plot_trajectory(U_opt)
-
     plt.show()
 
-
-    
+if __name__=="__main__":
+    solve_with_gradient_descent()
