@@ -17,7 +17,7 @@ import pickle
 
 # Scenario definition variables
 OBSTACLE_POSITION = jnp.array([0.0, 0.0])
-START_STATE = jnp.array([0.1, -1.5])
+START_STATE = jnp.array([0.0, -1.5])
 GOAL_STATE = jnp.array([0.0, 1.5])
 
 def obstacle_avoidance_cost(x: jnp.ndarray):
@@ -372,9 +372,9 @@ def importance_sampling_diffusion():
     plt.title("Langevin sampling")
     plot_scenario()
     rng, init_rng = jax.random.split(rng)
-    U_sample = 0.1 * jax.random.normal(init_rng, (horizon, 2))
+    U_sample = 0.5 * jax.random.normal(init_rng, (horizon, 2))
 
-    langevin_iterations = 20_000
+    langevin_iterations = 2000
     alpha = 0.1
     sigma = sigma_L
 
@@ -383,10 +383,10 @@ def importance_sampling_diffusion():
         eps = jax.random.normal(langevin_rng, (horizon, 2))
         U_sample = U_sample + alpha * jit_score_estimate(U_sample, sigma) + jnp.sqrt(2 * alpha * sigma**2) * eps
 
-        if i % 1000 == 0:
+        if i % 100 == 0:
             print(f"Iteration {i}, cost: {cost(U_sample)}, sigma: {sigma}")
-            plot_trajectory(U_sample, alpha=i/langevin_iterations)
-            sigma *= 0.99  # Rescale the noise for annealed Langevin dynamics
+            plot_trajectory(U_sample, alpha=0.2)
+            sigma *= 0.9  # Rescale the noise for annealed Langevin dynamics
 
     plot_trajectory(U_sample, color="black")
 
