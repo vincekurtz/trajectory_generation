@@ -339,6 +339,38 @@ def importance_sampling_diffusion():
         # Print some stats 
         if i % 10 == 0:
             print(f"Iteration {i}, best cost: {J[best]}")
+    
+    # Roll out more samples from the proposal distribution q(U)
+    rng = jax.random.PRNGKey(2)  # hard-coded to get samples in both directions
+    rng, init_samples_rng = jax.random.split(rng)
+    mu = 0.01 * jax.random.normal(init_samples_rng, (horizon, 2))
+    rng, rollout_rng = jax.random.split(rng)
+    U2 = mu + sigma_L * jax.random.normal(rollout_rng, (num_rollouts, horizon, 2))
+
+    jit_cost = jax.jit(jax.vmap(cost))
+    for i in range(iterations):
+        # Compute the cost of each trajectory
+        J = jit_cost(U2)
+
+        # Compute MPPI weights
+        best = jnp.argmin(J)
+        expJ2 = jnp.exp(-1/lmbda*(J - J[best]))
+
+        # Update the proposal distribution (MPPI-style)
+        weights = expJ2 / jnp.sum(expJ2)
+        mu = jnp.sum(weights[:, None, None] * U2, axis=0)
+
+        # Roll out new samples
+        rng, rollout_rng = jax.random.split(rng)
+        U2 = mu + sigma_L * jax.random.normal(rollout_rng, (num_rollouts, horizon, 2))
+
+        # Print some stats 
+        if i % 10 == 0:
+            print(f"Iteration {i}, best cost: {J[best]}")
+
+    # Combine both sets of samples
+    U = jnp.concatenate([U, U2], axis=0)
+    expJ = jnp.concatenate([expJ, expJ2], axis=0)
 
     # PDF values q(U) for the proposal distribution q(U) = N(μ, σ_L²) used above
     U_flat = U.reshape(-1, horizon * 2)
@@ -360,7 +392,7 @@ def importance_sampling_diffusion():
         # Score approximation
         # N.B. this is actually the score times sigma²
         weights = expJ * ratio
-        weights = weights / jnp.sum(weights)
+        weights = weights / (jnp.sum(weights) + 1e-6)  # Avoid division by zero
         score = jnp.sum(weights[:, None, None] * (U - sample_mu), axis=0)
         return score
 
@@ -372,7 +404,7 @@ def importance_sampling_diffusion():
     plt.title("Langevin sampling")
     plot_scenario()
     rng, init_rng = jax.random.split(rng)
-    U_sample = 0.5 * jax.random.normal(init_rng, (horizon, 2))
+    U_sample = 0.1 * jax.random.normal(init_rng, (horizon, 2))
 
     langevin_iterations = 2000
     alpha = 0.1
@@ -393,7 +425,7 @@ def importance_sampling_diffusion():
     plt.figure()
     plt.title("Samples from proposal distribution q(U)")
     plot_scenario()
-    for j in range(num_rollouts):
+    for j in range(U.shape[0]):
         plot_trajectory(U[j], alpha=0.02)
         plot_trajectory(mu, color="black", alpha=1.0)
     plt.show()
