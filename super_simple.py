@@ -17,7 +17,7 @@ import pickle
 
 # Scenario definition variables
 OBSTACLE_POSITION = jnp.array([0.0, 0.0])
-START_STATE = jnp.array([1.0, -1.5])
+START_STATE = jnp.array([0.0, -1.5])
 GOAL_STATE = jnp.array([0.0, 1.5])
 
 def obstacle_avoidance_cost(x: jnp.ndarray):
@@ -300,9 +300,57 @@ def solve_with_diffusion():
 
     return all_samples
 
+def importance_sampling_diffusion():
+    """Use importance sampling to estimate several scores using the same data."""
+    rng = jax.random.PRNGKey(0)
+
+    # Parameters
+    horizon = 20          # The length of the control tape
+    lmbda = 0.01          # The temperature of the energy distribution p(U)
+    num_rollouts = 1024   # Number of samples from proposal distribution q(U)
+    sigma_L = 0.1         # Std deviation of proposal distribution q(U)
+    iterations = 101      # Number of times to update the proposal distribution
+
+    # Guess a control tape
+    rng, init_samples_rng = jax.random.split(rng)
+    mu = 0.01 * jax.random.normal(init_samples_rng, (horizon, 2))
+
+    # Roll out samples from the proposal distribution q(U)
+    rng, rollout_rng = jax.random.split(rng)
+    U = mu + sigma_L * jax.random.normal(rollout_rng, (num_rollouts, horizon, 2))
+
+    jit_cost = jax.jit(jax.vmap(cost))
+    for i in range(iterations):
+        # Compute the cost of each trajectory
+        J = jit_cost(U)
+
+        # Compute MPPI weights
+        best = jnp.argmin(J)
+        pU = jnp.exp(-1/lmbda*(J - J[best]))
+
+        # Update the proposal distribution (MPPI-style)
+        weights = pU / jnp.sum(pU)
+        mu = jnp.sum(weights[:, None, None] * U, axis=0)
+
+        # Roll out new samples
+        rng, rollout_rng = jax.random.split(rng)
+        U = mu + sigma_L * jax.random.normal(rollout_rng, (num_rollouts, horizon, 2))
+
+        # Print some stats 
+        if i % 10 == 0:
+            print(f"Iteration {i}, best cost: {J[best]}")
+
+    plot_scenario()
+    for j in range(num_rollouts):
+        plot_trajectory(U[j], alpha=0.02)
+        plot_trajectory(mu, color="black", alpha=1.0)
+    plt.show()
+
 
 if __name__=="__main__":
-    samples = solve_with_diffusion()
+    importance_sampling_diffusion()
+
+    # samples = solve_with_diffusion()
     # animate_diffusion_process(samples)
 
     # solve_with_gradient_descent()
