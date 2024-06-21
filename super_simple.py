@@ -326,10 +326,10 @@ def importance_sampling_diffusion():
 
         # Compute MPPI weights
         best = jnp.argmin(J)
-        pU = jnp.exp(-1/lmbda*(J - J[best]))
+        expJ = jnp.exp(-1/lmbda*(J - J[best]))
 
         # Update the proposal distribution (MPPI-style)
-        weights = pU / jnp.sum(pU)
+        weights = expJ / jnp.sum(expJ)
         mu = jnp.sum(weights[:, None, None] * U, axis=0)
 
         # Roll out new samples
@@ -340,6 +340,55 @@ def importance_sampling_diffusion():
         if i % 10 == 0:
             print(f"Iteration {i}, best cost: {J[best]}")
 
+    # PDF values q(U) for the proposal distribution q(U) = N(μ, σ_L²) used above
+    U_flat = U.reshape(-1, horizon * 2)
+    mu_flat = mu.reshape(horizon * 2)
+    q = jax.scipy.stats.multivariate_normal.pdf(U_flat, mu_flat, sigma_L)
+
+    def calc_noised_score_estimate(sample_mu, sample_sigma):
+        """Estimate the noised score function ∇_μ log p_σ(μ), 
+        where p_σ(μ) ∝ 𝔼_{U ~ N(μ, σ²)}[exp(−J(U)/λ], using data collected
+        from a different proposal distribution q(U) above.
+        """
+        # PDF values for all data points under the desired distribution N(μ, σ²)
+        p_des = jax.scipy.stats.multivariate_normal.pdf(
+            U_flat, sample_mu.flatten(), sample_sigma)
+        
+        # Importance sampling ratio p(U) / q(U)
+        ratio = p_des / q
+
+        # Score approximation
+        # N.B. this is actually the score times sigma²
+        weights = expJ * ratio
+        weights = weights / jnp.sum(weights)
+        score = jnp.sum(weights[:, None, None] * (U - sample_mu), axis=0)
+        return score
+
+    # Do Langevin sampling using the estimated score function
+    print("")
+    jit_score_estimate = jax.jit(calc_noised_score_estimate)
+
+    plt.figure()
+    plt.title("Langevin sampling")
+    plot_scenario()
+    rng, init_rng = jax.random.split(rng)
+    U_sample = 0.1 * jax.random.normal(init_rng, (horizon, 2))
+
+    langevin_iterations = 1000
+    alpha = 0.01
+    sigma = 0.05
+
+    for i in range(langevin_iterations):
+        rng, langevin_rng = jax.random.split(rng)
+        eps = jax.random.normal(langevin_rng, (horizon, 2))
+        U_sample = U_sample + alpha * jit_score_estimate(U_sample, sigma) + jnp.sqrt(2 * alpha * sigma**2) * eps
+
+        if i % 50 == 0:
+            print(f"Iteration {i}, cost: {cost(U_sample)}")
+            plot_trajectory(U_sample, alpha=i/langevin_iterations)
+
+    plt.figure()
+    plt.title("Samples from proposal distribution q(U)")
     plot_scenario()
     for j in range(num_rollouts):
         plot_trajectory(U[j], alpha=0.02)
