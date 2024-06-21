@@ -255,7 +255,7 @@ def solve_with_diffusion():
     num_langevin_iterations = 100
     num_mppi_samples = 128
     sigma = 0.1
-    lmbda = 0.01
+    lmbda = 0.001
 
     learning_rate = 0.01
     outer_iterations = 51
@@ -302,13 +302,8 @@ def solve_with_diffusion():
 
 
 if __name__=="__main__":
-    # samples = solve_with_diffusion()
-    # with open("samples.pkl", "wb") as f:
-    #     pickle.dump(samples, f)
-
-    with open("samples.pkl", "rb") as f:
-        samples = pickle.load(f)
-    animate_diffusion_process(samples)
+    samples = solve_with_diffusion()
+    # animate_diffusion_process(samples)
 
     # solve_with_gradient_descent()
     # solve_with_mppi()
