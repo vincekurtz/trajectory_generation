@@ -17,7 +17,7 @@ import pickle
 
 # Scenario definition variables
 OBSTACLE_POSITION = jnp.array([0.0, 0.0])
-START_STATE = jnp.array([0.0, -1.5])
+START_STATE = jnp.array([0.1, -1.5])
 GOAL_STATE = jnp.array([0.0, 1.5])
 
 def obstacle_avoidance_cost(x: jnp.ndarray):
@@ -306,9 +306,9 @@ def importance_sampling_diffusion():
 
     # Parameters
     horizon = 20          # The length of the control tape
-    lmbda = 0.01          # The temperature of the energy distribution p(U)
+    lmbda = 0.1           # The temperature of the energy distribution p(U)
     num_rollouts = 1024   # Number of samples from proposal distribution q(U)
-    sigma_L = 0.1         # Std deviation of proposal distribution q(U)
+    sigma_L = 0.05         # Std deviation of proposal distribution q(U)
     iterations = 101      # Number of times to update the proposal distribution
 
     # Guess a control tape
@@ -374,18 +374,21 @@ def importance_sampling_diffusion():
     rng, init_rng = jax.random.split(rng)
     U_sample = 0.1 * jax.random.normal(init_rng, (horizon, 2))
 
-    langevin_iterations = 1000
-    alpha = 0.01
-    sigma = 0.05
+    langevin_iterations = 20_000
+    alpha = 0.1
+    sigma = sigma_L
 
     for i in range(langevin_iterations):
         rng, langevin_rng = jax.random.split(rng)
         eps = jax.random.normal(langevin_rng, (horizon, 2))
         U_sample = U_sample + alpha * jit_score_estimate(U_sample, sigma) + jnp.sqrt(2 * alpha * sigma**2) * eps
 
-        if i % 50 == 0:
-            print(f"Iteration {i}, cost: {cost(U_sample)}")
+        if i % 1000 == 0:
+            print(f"Iteration {i}, cost: {cost(U_sample)}, sigma: {sigma}")
             plot_trajectory(U_sample, alpha=i/langevin_iterations)
+            sigma *= 0.99  # Rescale the noise for annealed Langevin dynamics
+
+    plot_trajectory(U_sample, color="black")
 
     plt.figure()
     plt.title("Samples from proposal distribution q(U)")
