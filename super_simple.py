@@ -304,78 +304,67 @@ def importance_sampling_diffusion():
     """Use importance sampling to estimate several scores using the same data."""
     rng = jax.random.PRNGKey(0)
 
-    # Parameters
+    # Parameters for dataset generation
     horizon = 20          # The length of the control tape
     lmbda = 0.1           # The temperature of the energy distribution p(U)
     num_rollouts = 1024   # Number of samples from proposal distribution q(U)
-    sigma_L = 0.05         # Std deviation of proposal distribution q(U)
+    sigma_L = 0.05        # Std deviation of proposal distribution q(U)
     iterations = 101      # Number of times to update the proposal distribution
 
-    # Guess a control tape
-    rng, init_samples_rng = jax.random.split(rng)
-    mu = 0.01 * jax.random.normal(init_samples_rng, (horizon, 2))
+    # Parameters for Langevin sampling
+    num_langevin_samples = 5
+    langevin_iterations = 2000
+    alpha = 0.1
 
-    # Roll out samples from the proposal distribution q(U)
-    rng, rollout_rng = jax.random.split(rng)
-    U = mu + sigma_L * jax.random.normal(rollout_rng, (num_rollouts, horizon, 2))
-
-    jit_cost = jax.jit(jax.vmap(cost))
-    for i in range(iterations):
-        # Compute the cost of each trajectory
-        J = jit_cost(U)
-
-        # Compute MPPI weights
-        best = jnp.argmin(J)
-        expJ = jnp.exp(-1/lmbda*(J - J[best]))
-
-        # Update the proposal distribution (MPPI-style)
-        weights = expJ / jnp.sum(expJ)
-        mu = jnp.sum(weights[:, None, None] * U, axis=0)
-
-        # Roll out new samples
+    def do_rollouts(rng):
+        """Roll out samples from the proposal distribution q(U)"""
+        # Guess a control tape
+        rng, init_samples_rng = jax.random.split(rng)
+        mu = 0.01 * jax.random.normal(init_samples_rng, (horizon, 2))
+   
+        # Roll out samples from the proposal distribution q(U)
         rng, rollout_rng = jax.random.split(rng)
         U = mu + sigma_L * jax.random.normal(rollout_rng, (num_rollouts, horizon, 2))
 
-        # Print some stats 
-        if i % 10 == 0:
-            print(f"Iteration {i}, best cost: {J[best]}")
+        jit_cost = jax.jit(jax.vmap(cost))
+        for i in range(iterations):
+            # Compute the cost of each trajectory
+            J = jit_cost(U)
+
+            # Compute MPPI weights
+            best = jnp.argmin(J)
+            expJ = jnp.exp(-1/lmbda*(J - J[best]))
+
+            # Update the proposal distribution (MPPI-style)
+            weights = expJ / jnp.sum(expJ)
+            mu = jnp.sum(weights[:, None, None] * U, axis=0)
+
+            # Roll out new samples
+            rng, rollout_rng = jax.random.split(rng)
+            U = mu + sigma_L * jax.random.normal(rollout_rng, (num_rollouts, horizon, 2))
+
+            # Print some stats 
+            if i % 10 == 0:
+                print(f"Iteration {i}, best cost: {J[best]}")
     
-    # Roll out more samples from the proposal distribution q(U)
-    rng = jax.random.PRNGKey(2)  # hard-coded to get samples in both directions
-    rng, init_samples_rng = jax.random.split(rng)
-    mu = 0.01 * jax.random.normal(init_samples_rng, (horizon, 2))
-    rng, rollout_rng = jax.random.split(rng)
-    U2 = mu + sigma_L * jax.random.normal(rollout_rng, (num_rollouts, horizon, 2))
+        # Compute PDF values q(U) for the proposal distribution q(U) = N(μ, σ_L²)
+        U_flat = U.reshape(-1, horizon * 2)
+        mu_flat = mu.reshape(horizon * 2)
+        q = jax.scipy.stats.multivariate_normal.pdf(U_flat, mu_flat, sigma_L)
 
-    jit_cost = jax.jit(jax.vmap(cost))
-    for i in range(iterations):
-        # Compute the cost of each trajectory
-        J = jit_cost(U2)
+        return U, expJ, q
 
-        # Compute MPPI weights
-        best = jnp.argmin(J)
-        expJ2 = jnp.exp(-1/lmbda*(J - J[best]))
-
-        # Update the proposal distribution (MPPI-style)
-        weights = expJ2 / jnp.sum(expJ2)
-        mu = jnp.sum(weights[:, None, None] * U2, axis=0)
-
-        # Roll out new samples
-        rng, rollout_rng = jax.random.split(rng)
-        U2 = mu + sigma_L * jax.random.normal(rollout_rng, (num_rollouts, horizon, 2))
-
-        # Print some stats 
-        if i % 10 == 0:
-            print(f"Iteration {i}, best cost: {J[best]}")
+    rng = jax.random.PRNGKey(0) 
+    U, expJ, q = do_rollouts(rng)
+    rng = jax.random.PRNGKey(2)
+    U2, expJ2, q2 = do_rollouts(rng)
 
     # Combine both sets of samples
     U = jnp.concatenate([U, U2], axis=0)
     expJ = jnp.concatenate([expJ, expJ2], axis=0)
+    q = jnp.concatenate([q, q2], axis=0)
 
-    # PDF values q(U) for the proposal distribution q(U) = N(μ, σ_L²) used above
     U_flat = U.reshape(-1, horizon * 2)
-    mu_flat = mu.reshape(horizon * 2)
-    q = jax.scipy.stats.multivariate_normal.pdf(U_flat, mu_flat, sigma_L)
 
     def calc_noised_score_estimate(sample_mu, sample_sigma):
         """Estimate the noised score function ∇_μ log p_σ(μ), 
@@ -403,31 +392,27 @@ def importance_sampling_diffusion():
     plt.figure()
     plt.title("Langevin sampling")
     plot_scenario()
-    rng, init_rng = jax.random.split(rng)
-    U_sample = 0.1 * jax.random.normal(init_rng, (horizon, 2))
 
-    langevin_iterations = 2000
-    alpha = 0.1
-    sigma = sigma_L
+    for j in range(num_langevin_samples):
+        rng, init_rng = jax.random.split(rng)
+        U_sample = 0.1 * jax.random.normal(init_rng, (horizon, 2))
+        sigma = sigma_L
+        for i in range(langevin_iterations):
+            rng, langevin_rng = jax.random.split(rng)
+            eps = jax.random.normal(langevin_rng, (horizon, 2))
+            U_sample = U_sample + alpha * jit_score_estimate(U_sample, sigma) + jnp.sqrt(2 * alpha * sigma**2) * eps
 
-    for i in range(langevin_iterations):
-        rng, langevin_rng = jax.random.split(rng)
-        eps = jax.random.normal(langevin_rng, (horizon, 2))
-        U_sample = U_sample + alpha * jit_score_estimate(U_sample, sigma) + jnp.sqrt(2 * alpha * sigma**2) * eps
+            if i % 100 == 0:
+                print(f"Iteration {i}, cost: {cost(U_sample)}, sigma: {sigma}")
+                sigma *= 0.9  # Rescale the noise for annealed Langevin dynamics
 
-        if i % 100 == 0:
-            print(f"Iteration {i}, cost: {cost(U_sample)}, sigma: {sigma}")
-            plot_trajectory(U_sample, alpha=0.2)
-            sigma *= 0.9  # Rescale the noise for annealed Langevin dynamics
-
-    plot_trajectory(U_sample, color="black")
+        plot_trajectory(U_sample, color="black")
 
     plt.figure()
     plt.title("Samples from proposal distribution q(U)")
     plot_scenario()
     for j in range(U.shape[0]):
         plot_trajectory(U[j], alpha=0.02)
-        plot_trajectory(mu, color="black", alpha=1.0)
     plt.show()
 
 
